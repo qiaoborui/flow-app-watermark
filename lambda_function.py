@@ -47,13 +47,13 @@ SUPPORTED_FORMATS = [".mp4", ".mov", ".avi"]
 # Duration of the outro in seconds
 OUTRO_DURATION = 1
 # Watermark size percentage (relative to video height)
-WATERMARK_SIZE_PERCENT = 10
+WATERMARK_SIZE_PERCENT = 5
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
-WATERMARK_OPACITY = 0.5
+WATERMARK_OPACITY = 0.7
 # Position change interval in seconds
-POSITION_CHANGE_INTERVAL = 2
+POSITION_CHANGE_INTERVAL = 5
 # FFmpeg encoding preset (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
-FFMPEG_PRESET = "ultrafast"
+FFMPEG_PRESET = "medium"
 # Whether to disable caching of processed videos
 DISABLE_CACHE = True
 
@@ -117,7 +117,11 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
         [
             '-i', str(input_file),
             '-i', watermark_path,
-            '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
+            '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay=x='if(lt(mod(t\,16)\,8)\,W-w-W*10/100\,W*10/100)':y='if(lt(mod(t+4\,16)\,8)\,H-h-H*5/100\,H*5/100)'",
+            '-c:v', 'libx264',
+            '-preset', FFMPEG_PRESET,
+            '-crf', '23',
+            '-c:a', 'copy',
             str(output_file)
         ]
     )
@@ -141,8 +145,9 @@ def concat_videos(video_file: Path, outro_file: Path, output_file: Path) -> None
             '-map', '[outa]',
             '-c:v', 'libx264',
             '-preset', FFMPEG_PRESET,
-            '-pix_fmt', 'yuv420p',
-            '-y',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
             str(output_file)
         ]
     )
