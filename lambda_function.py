@@ -45,7 +45,7 @@ WATERMARK_PATH = str(Path(__file__).parent / "watermark.png")
 # Supported video formats
 SUPPORTED_FORMATS = [".mp4", ".mov", ".avi"]
 # Duration of the outro in seconds
-OUTRO_DURATION = 3
+OUTRO_DURATION = 1
 # Watermark size percentage (relative to video height)
 WATERMARK_SIZE_PERCENT = 15
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
@@ -116,7 +116,7 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
         [
             '-i', str(input_file),
             '-i', watermark_path,
-            '-filter_complex',f"[1:v]format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
+            '-filter_complex',f"[1:v]format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
             str(output_file)
         ]
     )
@@ -124,17 +124,23 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
 @timing_decorator
 def concat_videos(video_file: Path, outro_file: Path, output_file: Path) -> None:
     """Concatenate main video with outro"""
-    # Use filter_complex instead of concat demuxer for better compatibility
+    # Get video info to match frame rate and other parameters
+    video_info = get_video_info(str(video_file))
+    video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
+    fps = eval(video_stream.get('r_frame_rate', '25/1'))  # Get original video frame rate
+    
     run_command(
         'ffmpeg',
         [
             '-i', str(video_file),
             '-i', str(outro_file),
-            '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]',
+            '-filter_complex', 
+            f'[1:v]fps={fps}[v1];[0:v][0:a][v1][1:a]concat=n=2:v=1:a=1[outv][outa]',
             '-map', '[outv]',
             '-map', '[outa]',
             '-c:v', 'libx264',
             '-preset', FFMPEG_PRESET,
+            '-pix_fmt', 'yuv420p',
             '-y',
             str(output_file)
         ]
