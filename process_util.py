@@ -46,8 +46,6 @@ def run_command(command: str, args: List[str], env: Optional[Dict] = None, cwd: 
             text=True
         )
         
-        if result.stdout:
-            logger.info(result.stdout)
         if result.stderr:
             logger.error(result.stderr)
             

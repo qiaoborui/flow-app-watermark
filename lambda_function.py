@@ -49,7 +49,7 @@ OUTRO_DURATION = 3
 # Watermark size percentage (relative to video height)
 WATERMARK_SIZE_PERCENT = 15
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
-WATERMARK_OPACITY = 0.3
+WATERMARK_OPACITY = 0.5
 # Position change interval in seconds
 POSITION_CHANGE_INTERVAL = 2
 # FFmpeg encoding preset (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
@@ -76,7 +76,11 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
         [
             '-f', 'lavfi',
             '-i', f'color=c=black:s={width}x{height}:d={OUTRO_DURATION}',
+            '-f', 'lavfi',
+            '-i', f'anullsrc=channel_layout=stereo:sample_rate=44100:d={OUTRO_DURATION}',
             '-c:v', 'libx264',
+            '-c:a', 'aac',
+            '-shortest',
             '-preset', FFMPEG_PRESET,
             '-tune', 'stillimage',
             '-pix_fmt', 'yuv420p',
@@ -94,6 +98,7 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
             '-filter_complex', 
             f'[1:v]scale=-1:{watermark_height}[watermark];[0:v][watermark]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2',
             '-c:v', 'libx264',
+            '-c:a', 'copy',
             '-preset', FFMPEG_PRESET,
             '-y',
             str(outro_with_watermark)
@@ -111,7 +116,7 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
         [
             '-i', str(input_file),
             '-i', watermark_path,
-            '-filter_complex',f"[1:v]scale=-1:{watermark_height},[1:v]format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
+            '-filter_complex',f"[1:v]format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/5,1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
             str(output_file)
         ]
     )
@@ -119,23 +124,21 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
 @timing_decorator
 def concat_videos(video_file: Path, outro_file: Path, output_file: Path) -> None:
     """Concatenate main video with outro"""
-    concat_list = TEMP_DIR / "concat.txt"
-    with open(concat_list, "w") as f:
-        f.write(f"file '{video_file}'\n")
-        f.write(f"file '{outro_file}'\n")
-    
+    # Use filter_complex instead of concat demuxer for better compatibility
     run_command(
         'ffmpeg',
         [
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', str(concat_list),
-            '-c', 'copy',
+            '-i', str(video_file),
+            '-i', str(outro_file),
+            '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]',
+            '-map', '[outv]',
+            '-map', '[outa]',
+            '-c:v', 'libx264',
+            '-preset', FFMPEG_PRESET,
             '-y',
             str(output_file)
         ]
     )
-    concat_list.unlink()
 
 @timing_decorator
 def download_input_video(bucket: str, key: str, output_path: str) -> None:
@@ -175,6 +178,9 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     processing_times = {}
     
     try:
+        # Create temp directory if it doesn't exist
+        TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        
         # Parse request body
         try:
             video_url = parse_request_body(event)
@@ -288,3 +294,4 @@ if __name__ == "__main__":
     logger.info(f"Watermark file exists: {Path(WATERMARK_PATH).exists()}")
     res = lambda_handler(test_event, None)
     print(res)
+    # add_watermark("tmp/3658c8ba29b2176c12b113211b86b86d_input.mp4","./watermark.png","last.mp4",)
