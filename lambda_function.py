@@ -42,10 +42,12 @@ OUTPUT_BUCKET = "flow-app-media"
 OUTPUT_PREFIX = "processed"
 # Path to watermark image
 WATERMARK_PATH = str(Path(__file__).parent / "watermark.png")
+# Path to outro video
+OUTRO_VIDEO_PATH = str(Path(__file__).parent / "output.mp4")
 # Supported video formats
 SUPPORTED_FORMATS = [".mp4", ".mov", ".avi"]
 # Duration of the outro in seconds
-OUTRO_DURATION = 1
+OUTRO_DURATION = 3
 # Watermark size percentage (relative to video height)
 WATERMARK_SIZE_PERCENT = 5
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
@@ -68,8 +70,8 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
     video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
     width = int(video_stream['width'])
     height = int(video_stream['height'])
-    watermark_height = height * WATERMARK_SIZE_PERCENT // 100
     
+    # Create black background video
     outro_path = work_dir / "outro.mp4"
     run_command(
         'ffmpeg',
@@ -89,24 +91,36 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
         ]
     )
     
-    outro_with_watermark = work_dir / "outro_with_watermark.mp4"
+    # Get output video info
+    output_video_info = get_video_info(OUTRO_VIDEO_PATH)
+    output_stream = next(s for s in output_video_info['streams'] if s['codec_type'] == 'video')
+    output_width = int(output_stream['width'])
+    output_height = int(output_stream['height'])
+    
+    # Calculate scaling to fit output video in the center while maintaining aspect ratio
+    scale_factor = min(width * 0.8 / output_width, height * 0.8 / output_height)
+    new_width = int(output_width * scale_factor)
+    new_height = int(output_height * scale_factor)
+    
+    # Add output video to the center of black background
+    outro_with_video = work_dir / "outro_with_video.mp4"
     run_command(
         'ffmpeg',
         [
             '-i', str(outro_path),
-            '-i', watermark_path,
-            '-filter_complex', 
-            f'[1:v]scale=-1:{watermark_height}[watermark];[0:v][watermark]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2',
+            '-i', OUTRO_VIDEO_PATH,
+            '-filter_complex',
+            f'[1:v]scale={new_width}:{new_height}[output];[0:v][output]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2',
             '-c:v', 'libx264',
             '-c:a', 'copy',
             '-preset', FFMPEG_PRESET,
             '-y',
-            str(outro_with_watermark)
+            str(outro_with_video)
         ]
     )
     
     outro_path.unlink()
-    return outro_with_watermark
+    return outro_with_video
 
 @timing_decorator
 def add_watermark(input_file: Path, watermark_path: str, output_file: Path, watermark_height: int) -> None:
@@ -173,9 +187,12 @@ def parse_request_body(event: Dict[str, Any]) -> str:
         body = json.loads(body)
     
     video_url = body.get('videoUrl')
-    
     if not video_url:
         raise ValueError("Missing 'videoUrl' in request body")
+    
+    # Replace image-cdn.flowgpt.com with flow-app-media.s3.amazonaws.com
+    if 'image-cdn.flowgpt.com' in video_url:
+        video_url = video_url.replace('image-cdn.flowgpt.com', 'flow-app-media.s3.amazonaws.com')
         
     return unquote(video_url)
 
