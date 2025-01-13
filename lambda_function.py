@@ -65,6 +65,9 @@ DEV_MODE = True  # Set to True to keep temp files in current directory
 TEMP_DIR = Path('./tmp') if DEV_MODE else Path('/tmp')
 CLEANUP_TEMP_FILES = not DEV_MODE
 
+# Path to base watermark image (without text)
+BASE_WATERMARK_PATH = str(Path(__file__).parent / "watermark.png")
+
 @timing_decorator
 def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
     video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
@@ -200,6 +203,26 @@ def get_video_hash(video_url: str) -> str:
     """Calculate a hash of the video URL to use as a unique identifier"""
     return hashlib.md5(video_url.encode()).hexdigest()
 
+@timing_decorator
+def generate_watermark(username: str, output_path: str) -> str:
+    """Generate a customized watermark with the given username"""
+    logger.info(f"Generating watermark for user: {username}")
+    run_command(
+        'magick',
+        [
+            BASE_WATERMARK_PATH,
+            '-gravity', 'south',
+            '-fill', 'White',
+            '-pointsize', '30',
+            '-background', 'none',
+            '-splice', '0x50',
+            '-gravity', 'south',
+            '-annotate', f'+0+6', f"@{username}",
+            output_path
+        ]
+    )
+    return output_path
+
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     logger.info(f"Received event: {json.dumps(event)}")
     start_time = time.time()
@@ -214,6 +237,13 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         try:
             video_url = parse_request_body(event)
             logger.info(f"Parsed video URL: {video_url}")
+            
+            # Get username from request body
+            body = event['body']
+            if not event.get('isBase64Encoded', True):
+                body = json.loads(body)
+            username = body.get('username', 'emochi')  # Default to 'flowgpt' if not provided
+            
         except ValueError as e:
             return {
                 'statusCode': 400,
@@ -268,8 +298,13 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         watermark_height = height * WATERMARK_SIZE_PERCENT // 100
         logger.debug("watermark height",watermark_height)
         
+        # Generate custom watermark
+        custom_watermark_path = str(TEMP_DIR / f"{file_id}_watermark.png")
+        generate_watermark(username, custom_watermark_path)
+        temp_files.append(Path(custom_watermark_path))
+        
         # Add watermark
-        _, processing_times['watermark'] = add_watermark(input_file, WATERMARK_PATH, watermarked_file, watermark_height)
+        _, processing_times['watermark'] = add_watermark(input_file, custom_watermark_path, watermarked_file, watermark_height)
         
         # Create outro
         outro_file, processing_times['outro'] = create_outro(TEMP_DIR, video_info, WATERMARK_PATH)
@@ -318,7 +353,8 @@ if __name__ == "__main__":
     # 模拟Lambda Function URL的请求
     test_event = {
         "body": "{\"videoUrl\":\"https://flow-app-media.s3.us-west-1.amazonaws.com/trans-video/%25E5%25BF%2583%25E7%2581%25B5%25E9%2593%25BE%25E7%258E%25AF%25EF%25BC%259A%25E7%25A8%25BB%25E5%258F%25B6%25E5%25A7%25AC%25E5%25AD%2590%25EF%25BC%2588Inaba%2520Himeko%25EF%25BC%2589.mp4\"}",
-        "isBase64Encoded": False
+        "isBase64Encoded": False,
+        "username": "emochi"
     }
     logger.info(f"Using watermark file: {WATERMARK_PATH}")
     logger.info(f"Watermark file exists: {Path(WATERMARK_PATH).exists()}")
