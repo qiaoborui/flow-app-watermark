@@ -47,7 +47,7 @@ SUPPORTED_FORMATS = [".mp4", ".mov", ".avi"]
 # Duration of the outro in seconds
 OUTRO_DURATION = 1
 # Watermark size percentage (relative to video height)
-WATERMARK_SIZE_PERCENT = 15
+WATERMARK_SIZE_PERCENT = 10
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
 WATERMARK_OPACITY = 0.5
 # Position change interval in seconds
@@ -111,6 +111,7 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
 @timing_decorator
 def add_watermark(input_file: Path, watermark_path: str, output_file: Path, watermark_height: int) -> None:
     """Add watermark to video with random position changes every 5 seconds"""
+    logger.info("watermark height %d",watermark_height)
     run_command(
         'ffmpeg',
         [
@@ -243,6 +244,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
         height = int(video_stream['height'])
         watermark_height = height * WATERMARK_SIZE_PERCENT // 100
+        logger.debug("watermark height",watermark_height)
         
         # Add watermark
         _, processing_times['watermark'] = add_watermark(input_file, WATERMARK_PATH, watermarked_file, watermark_height)
