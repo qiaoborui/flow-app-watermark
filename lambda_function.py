@@ -116,7 +116,7 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
         [
             '-i', str(input_file),
             '-i', watermark_path,
-            '-filter_complex',f"[1:v]format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
+            '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay='if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(W-w));NAN)':'if(ld(0), if(lte(mod(t/{POSITION_CHANGE_INTERVAL},1),0.05),st(0,0);NAN,ld(1)), st(0,1);ld(1);st(1,random(time(0))*(H-h));NAN)'",
             str(output_file)
         ]
     )
