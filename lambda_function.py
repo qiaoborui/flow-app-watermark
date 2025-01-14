@@ -9,6 +9,7 @@ import hashlib
 import functools
 import os
 import uuid
+from PIL import Image, ImageDraw, ImageFont
 
 from s3_util import download_file_from_s3, upload_file_to_s3, parse_s3_url, check_processed_video
 from process_util import run_command, get_video_info
@@ -235,20 +236,59 @@ def get_video_hash(video_url: str) -> str:
 def generate_watermark(username: str, output_path: str) -> str:
     """Generate a customized watermark with the given username"""
     logger.info(f"Generating watermark for user: {username}")
-    run_command(
-        'convert',
-        [
-            BASE_WATERMARK_PATH,
-            '-gravity', 'south',
-            '-fill', 'White',
-            '-pointsize', '30',
-            '-background', 'none',
-            '-splice', '0x50',
-            '-gravity', 'south',
-            '-annotate', f'+0+6', f"@{username}",
-            output_path
-        ]
-    )
+    
+    # Open the base watermark image
+    base_img = Image.open(BASE_WATERMARK_PATH).convert('RGBA')
+    
+    # Create draw object for text size calculation
+    temp_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(temp_img)
+    
+    # Try to use Arial font, fallback to default if not available
+    try:
+        font = ImageFont.truetype("Arial", 24)
+    except:
+        font = ImageFont.load_default()
+    
+    # Add text
+    text = f"@{username}"
+    
+    # Get text size
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    
+    # Calculate required width and padding
+    padding_vertical = 40  # Space for text vertically
+    padding_horizontal = 40  # Minimum padding on sides
+    required_width = max(base_img.width, text_width + padding_horizontal * 2)
+    
+    # Create a new image with calculated dimensions
+    new_img = Image.new('RGBA', (required_width, base_img.height + padding_vertical), (0, 0, 0, 0))
+    
+    # Calculate position to center the original watermark
+    watermark_x = (required_width - base_img.width) // 2
+    new_img.paste(base_img, (watermark_x, 0))
+    
+    # Create draw object for final text
+    draw = ImageDraw.Draw(new_img)
+    
+    # Calculate text position (centered horizontally, at the bottom with padding)
+    x = (required_width - text_width) // 2
+    y = base_img.height + (padding_vertical - text_height) // 2
+    
+    # Add black outline
+    outline_color = "black"
+    outline_width = 2
+    for offset_x in range(-outline_width, outline_width + 1):
+        for offset_y in range(-outline_width, outline_width + 1):
+            draw.text((x + offset_x, y + offset_y), text, font=font, fill=outline_color)
+    
+    # Add white text on top
+    draw.text((x, y), text, font=font, fill="white")
+    
+    # Save the result
+    new_img.save(output_path, "PNG")
     return output_path
 
 @timing_decorator
