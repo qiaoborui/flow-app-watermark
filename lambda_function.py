@@ -133,12 +133,17 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
     run_command(
         'ffmpeg',
         [
+            '-hwaccel', 'auto',  # Enable hardware acceleration
             '-i', str(input_file),
             '-i', watermark_path,
             '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay=x='if(lt(mod(t\,16)\,8)\,W-w-W*10/100\,W*10/100)':y='if(lt(mod(t+4\,16)\,8)\,H-h-H*5/100\,H*5/100)'",
-            '-c:v', 'libx264',
+            '-c:v', 'h264_videotoolbox',  # Use VideoToolbox for macOS hardware encoding
+            '-b:v', '2M',  # Lower target video bitrate
+            '-maxrate', '2.5M',  # Lower max bitrate
+            '-bufsize', '4M',  # Adjusted buffer size
             '-preset', FFMPEG_PRESET,
-            '-crf', '23',
+            '-threads', '0',
+            '-movflags', '+faststart',
             '-c:a', 'copy',
             str(output_file)
         ]
@@ -146,29 +151,34 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
 
 @timing_decorator
 def concat_videos(video_file: Path, outro_file: Path, output_file: Path) -> None:
-    """Concatenate main video with outro"""
-    # Get video info to match frame rate and other parameters
-    video_info = get_video_info(str(video_file))
-    video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
-    fps = eval(video_stream.get('r_frame_rate', '25/1'))  # Get original video frame rate
+    """Concatenate main video with outro using optimized FFmpeg settings"""
+    # Create a temporary file list for concat demuxer
+    concat_list = TEMP_DIR / "concat_list.txt"
+    with open(concat_list, 'w') as f:
+        f.write(f"file '{video_file}'\n")
+        f.write(f"file '{outro_file}'\n")
     
     run_command(
         'ffmpeg',
         [
-            '-i', str(video_file),
-            '-i', str(outro_file),
-            '-filter_complex', 
-            f'[1:v]fps={fps}[v1];[0:v][0:a][v1][1:a]concat=n=2:v=1:a=1[outv][outa]',
-            '-map', '[outv]',
-            '-map', '[outa]',
-            '-c:v', 'libx264',
+            '-hwaccel', 'auto',  # Enable hardware acceleration
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', str(concat_list),
+            '-c:v', 'h264_videotoolbox',  # Use VideoToolbox for macOS hardware encoding
+            '-b:v', '2M',  # Lower target video bitrate
+            '-maxrate', '2.5M',  # Lower max bitrate
+            '-bufsize', '4M',  # Adjusted buffer size
             '-preset', FFMPEG_PRESET,
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '128k',
+            '-threads', '0',
+            '-movflags', '+faststart',
+            '-c:a', 'copy',
             str(output_file)
         ]
     )
+    
+    # Clean up the temporary concat list
+    concat_list.unlink()
 
 @timing_decorator
 def download_input_video(bucket: str, key: str, output_path: str) -> None:
