@@ -8,6 +8,7 @@ import sys
 import hashlib
 import functools
 import os
+import random
 
 from s3_util import download_file_from_s3, upload_file_to_s3, parse_s3_url, check_processed_video
 from process_util import run_command, get_video_info
@@ -374,7 +375,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Video processed successfully with outro',
-                'url': f'https://{OUTPUT_BUCKET}.s3.amazonaws.com/{output_key}',
+                'url': f'https://{OUTPUT_BUCKET}.s3.amazonaws.com/{output_key}-{random.randint(1000, 9999)}',
                 'cached': False,
                 'processingTime': {k: round(v, 2) for k, v in processing_times.items()}
             })
