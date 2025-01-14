@@ -1,9 +1,34 @@
 import subprocess
 import logging
 import json
+import shutil
 from typing import List, Optional, Dict
 
 logger = logging.getLogger(__name__)
+
+def check_dependencies() -> None:
+    """Check if required dependencies (ffmpeg and imagemagick) are installed"""
+    missing_deps = []
+    
+    # Check ffmpeg
+    if shutil.which('ffmpeg') is None:
+        missing_deps.append('ffmpeg')
+        
+    # Check imagemagick (magick command)
+    if shutil.which('magick') is None:
+        missing_deps.append('imagemagick')
+    
+    if missing_deps:
+        raise RuntimeError(f"Missing required dependencies: {', '.join(missing_deps)}. Please install them first.")
+    
+    # Log versions for debugging
+    try:
+        ffmpeg_version = subprocess.check_output(['ffmpeg', '-version'], stderr=subprocess.STDOUT).decode().split('\n')[0]
+        magick_version = subprocess.check_output(['magick', '-version'], stderr=subprocess.STDOUT).decode().split('\n')[0]
+        logger.info(f"FFmpeg version: {ffmpeg_version}")
+        logger.info(f"ImageMagick version: {magick_version}")
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to get version info: {e}")
 
 def get_video_info(video_path: str) -> Dict:
     """

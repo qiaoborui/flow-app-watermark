@@ -7,6 +7,7 @@ import time
 import sys
 import hashlib
 import functools
+import os
 
 from s3_util import download_file_from_s3, upload_file_to_s3, parse_s3_url, check_processed_video
 from process_util import run_command, get_video_info
@@ -37,36 +38,36 @@ def timing_decorator(func: Callable[..., T]) -> Callable[..., tuple[T, float]]:
     return wrapper
 
 # S3 bucket for processed videos
-OUTPUT_BUCKET = "flow-app-media"
+OUTPUT_BUCKET = os.environ.get("OUTPUT_BUCKET", "flow-app-media")
 # Output prefix for processed videos
-OUTPUT_PREFIX = "processed"
+OUTPUT_PREFIX = os.environ.get("OUTPUT_PREFIX", "processed")
 # Path to watermark image
-WATERMARK_PATH = str(Path(__file__).parent / "watermark.png")
+WATERMARK_PATH = os.environ.get("WATERMARK_PATH", str(Path(__file__).parent / "watermark.png"))
 # Path to outro video
-OUTRO_VIDEO_PATH = str(Path(__file__).parent / "output.mp4")
+OUTRO_VIDEO_PATH = os.environ.get("OUTRO_VIDEO_PATH", str(Path(__file__).parent / "output.mp4"))
 # Supported video formats
-SUPPORTED_FORMATS = [".mp4", ".mov", ".avi"]
+SUPPORTED_FORMATS = os.environ.get("SUPPORTED_FORMATS", ".mp4,.mov,.avi").split(',')
 # Duration of the outro in seconds
-OUTRO_DURATION = 3
+OUTRO_DURATION = int(os.environ.get("OUTRO_DURATION", 3))
 # Watermark size percentage (relative to video height)
-WATERMARK_SIZE_PERCENT = 5
+WATERMARK_SIZE_PERCENT = int(os.environ.get("WATERMARK_SIZE_PERCENT", 15))
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
-WATERMARK_OPACITY = 0.7
+WATERMARK_OPACITY = float(os.environ.get("WATERMARK_OPACITY", 0.7))
 # Position change interval in seconds
-POSITION_CHANGE_INTERVAL = 5
-# FFmpeg encoding preset (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
-FFMPEG_PRESET = "medium"
+POSITION_CHANGE_INTERVAL = int(os.environ.get("POSITION_CHANGE_INTERVAL", 5))
+# FFmpeg encoding preset
+FFMPEG_PRESET = os.environ.get("FFMPEG_PRESET", "medium")
 # Whether to disable caching of processed videos
-DISABLE_CACHE = True
+DISABLE_CACHE = os.environ.get("DISABLE_CACHE", "True").lower() in ['true', '1', 't']
 
 # Development mode settings
-DEV_MODE = True  # Set to True to keep temp files in current directory
+DEV_MODE = os.environ.get("DEV_MODE", "False").lower() in ['true', '1', 't']  # Set to True to keep temp files in current directory
 # Use system temp directory or current directory based on dev mode
-TEMP_DIR = Path('./tmp') if DEV_MODE else Path('/tmp')
+TEMP_DIR = Path(os.environ.get("TEMP_DIR", './tmp')) if DEV_MODE else Path('/tmp')
 CLEANUP_TEMP_FILES = not DEV_MODE
 
 # Path to base watermark image (without text)
-BASE_WATERMARK_PATH = str(Path(__file__).parent / "watermark.png")
+BASE_WATERMARK_PATH = os.environ.get("BASE_WATERMARK_PATH", str(Path(__file__).parent / "watermark.png"))
 
 @timing_decorator
 def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
@@ -208,7 +209,7 @@ def generate_watermark(username: str, output_path: str) -> str:
     """Generate a customized watermark with the given username"""
     logger.info(f"Generating watermark for user: {username}")
     run_command(
-        'magick',
+        'convert',
         [
             BASE_WATERMARK_PATH,
             '-gravity', 'south',
