@@ -77,6 +77,8 @@ CLEANUP_TEMP_FILES = not DEV_MODE
 
 # Path to base watermark image (without text)
 BASE_WATERMARK_PATH = os.environ.get("BASE_WATERMARK_PATH", str(Path(__file__).parent / "watermark.png"))
+# Path to font file
+FONT_PATH = os.environ.get("FONT_PATH", str(Path(__file__).parent / "font.ttf"))
 
 @timing_decorator
 def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
@@ -244,11 +246,14 @@ def generate_watermark(username: str, output_path: str) -> str:
     temp_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
     draw = ImageDraw.Draw(temp_img)
     
-    # Try to use Arial font, fallback to default if not available
+    # Try to use custom font, fallback to default if not available
     try:
-        font = ImageFont.truetype("Arial", 24)
+        font = ImageFont.truetype(FONT_PATH, 24)
     except:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("Arial", 24)
+        except:
+            font = ImageFont.load_default()
     
     # Add text
     text = f"@{username}"
