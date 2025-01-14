@@ -335,7 +335,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         input_file = TEMP_DIR / f"{file_id}_input{ext}"
         watermarked_file = TEMP_DIR / f"{file_id}_watermarked{ext}"
         final_output_file = TEMP_DIR / f"{file_id}_with_outro{ext}"
-        output_key = f"{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
+        output_key = f"{random.randint(100000, 999999)}-{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
         
         temp_files.extend([input_file, watermarked_file, final_output_file])
         
@@ -375,7 +375,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Video processed successfully with outro',
-                'url': f'https://{OUTPUT_BUCKET}.s3.amazonaws.com/{output_key}-{random.randint(1000, 9999)}',
+                'url': f'https://{OUTPUT_BUCKET}.s3.amazonaws.com/{output_key}',
                 'cached': False,
                 'processingTime': {k: round(v, 2) for k, v in processing_times.items()}
             })
