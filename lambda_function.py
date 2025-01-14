@@ -75,25 +75,45 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
     width = int(video_stream['width'])
     height = int(video_stream['height'])
     
+    # Get video encoding parameters from input video
+    pix_fmt = video_stream.get('pix_fmt', 'yuv420p')
+    video_codec = video_stream.get('codec_name', 'libx264')
+    video_bitrate = video_stream.get('bit_rate')
+    framerate = eval(video_stream.get('r_frame_rate', '30/1'))  # Convert fraction string to float
+    
+    # Get audio parameters
+    audio_stream = next((s for s in video_info['streams'] if s['codec_type'] == 'audio'), None)
+    audio_codec = audio_stream.get('codec_name', 'aac') if audio_stream else 'aac'
+    audio_bitrate = audio_stream.get('bit_rate') if audio_stream else '128k'
+    sample_rate = audio_stream.get('sample_rate', '44100') if audio_stream else '44100'
+    
     # Create black background video
     outro_path = work_dir / "outro.mp4"
-    run_command(
-        'ffmpeg',
-        [
-            '-f', 'lavfi',
-            '-i', f'color=c=black:s={width}x{height}:d={OUTRO_DURATION}',
-            '-f', 'lavfi',
-            '-i', f'anullsrc=channel_layout=stereo:sample_rate=44100:d={OUTRO_DURATION}',
-            '-c:v', 'libx264',
-            '-c:a', 'aac',
-            '-shortest',
-            '-preset', FFMPEG_PRESET,
-            '-tune', 'stillimage',
-            '-pix_fmt', 'yuv420p',
-            '-y',
-            str(outro_path)
-        ]
-    )
+    ffmpeg_args = [
+        '-f', 'lavfi',
+        '-i', f'color=c=black:s={width}x{height}:r={framerate}:d={OUTRO_DURATION}',
+        '-f', 'lavfi',
+        '-i', f'anullsrc=channel_layout=stereo:sample_rate={sample_rate}:d={OUTRO_DURATION}'
+    ]
+    
+    # Add encoding parameters
+    ffmpeg_args.extend([
+        '-c:v', video_codec,
+        '-c:a', audio_codec,
+        '-pix_fmt', pix_fmt,
+        '-shortest',
+        '-preset', FFMPEG_PRESET
+    ])
+    
+    # Add bitrate if available
+    if video_bitrate:
+        ffmpeg_args.extend(['-b:v', str(video_bitrate)])
+    if audio_bitrate:
+        ffmpeg_args.extend(['-b:a', str(audio_bitrate)])
+    
+    ffmpeg_args.extend(['-y', str(outro_path)])
+    
+    run_command('ffmpeg', ffmpeg_args)
     
     # Get output video info
     output_video_info = get_video_info(OUTRO_VIDEO_PATH)
@@ -115,12 +135,14 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
             '-i', OUTRO_VIDEO_PATH,
             '-filter_complex',
             f'[1:v]scale={new_width}:{new_height}[output];[0:v][output]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2',
-            '-c:v', 'libx264',
-            '-c:a', 'copy',
+            '-c:v', video_codec,
+            '-c:a', audio_codec,
+            '-pix_fmt', pix_fmt,
             '-preset', FFMPEG_PRESET,
-            '-y',
-            str(outro_with_video)
-        ]
+            ] + 
+            (['-b:v', str(video_bitrate)] if video_bitrate else []) +
+            (['-b:a', str(audio_bitrate)] if audio_bitrate else []) +
+            ['-y', str(outro_with_video)]
     )
     
     outro_path.unlink()
@@ -133,17 +155,12 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
     run_command(
         'ffmpeg',
         [
-            '-hwaccel', 'auto',  # Enable hardware acceleration
             '-i', str(input_file),
             '-i', watermark_path,
             '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay=x='if(lt(mod(t\,16)\,8)\,W-w-W*10/100\,W*10/100)':y='if(lt(mod(t+4\,16)\,8)\,H-h-H*5/100\,H*5/100)'",
-            '-c:v', 'h264_videotoolbox',  # Use VideoToolbox for macOS hardware encoding
-            '-b:v', '2M',  # Lower target video bitrate
-            '-maxrate', '2.5M',  # Lower max bitrate
-            '-bufsize', '4M',  # Adjusted buffer size
+            '-c:v', 'libx264',
             '-preset', FFMPEG_PRESET,
-            '-threads', '0',
-            '-movflags', '+faststart',
+            '-crf', '23',
             '-c:a', 'copy',
             str(output_file)
         ]
@@ -151,34 +168,26 @@ def add_watermark(input_file: Path, watermark_path: str, output_file: Path, wate
 
 @timing_decorator
 def concat_videos(video_file: Path, outro_file: Path, output_file: Path) -> None:
-    """Concatenate main video with outro using optimized FFmpeg settings"""
-    # Create a temporary file list for concat demuxer
-    concat_list = TEMP_DIR / "concat_list.txt"
-    with open(concat_list, 'w') as f:
+    """Concatenate main video with outro"""
+    # 使用concat选项直接合并视频
+    concat_file = TEMP_DIR / "concat_list.txt"
+    
+    # 创建一个包含要合并文件的文本文件
+    with open(concat_file, 'w') as f:
         f.write(f"file '{video_file}'\n")
         f.write(f"file '{outro_file}'\n")
     
     run_command(
         'ffmpeg',
         [
-            '-hwaccel', 'auto',  # Enable hardware acceleration
             '-f', 'concat',
             '-safe', '0',
-            '-i', str(concat_list),
-            '-c:v', 'h264_videotoolbox',  # Use VideoToolbox for macOS hardware encoding
-            '-b:v', '2M',  # Lower target video bitrate
-            '-maxrate', '2.5M',  # Lower max bitrate
-            '-bufsize', '4M',  # Adjusted buffer size
-            '-preset', FFMPEG_PRESET,
-            '-threads', '0',
-            '-movflags', '+faststart',
-            '-c:a', 'copy',
+            '-i', str(concat_file),
+            '-c', 'copy',
             str(output_file)
         ]
     )
-    
-    # Clean up the temporary concat list
-    concat_list.unlink()
+    concat_file.unlink()  # 删除临时文件
 
 @timing_decorator
 def download_input_video(bucket: str, key: str, output_path: str) -> None:
