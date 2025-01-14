@@ -8,7 +8,6 @@ import sys
 import hashlib
 import functools
 import os
-import uuid
 from PIL import Image, ImageDraw, ImageFont
 
 from s3_util import download_file_from_s3, upload_file_to_s3, parse_s3_url, check_processed_video
@@ -370,7 +369,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         preprocessed_file = TEMP_DIR / f"{file_id}_preprocessed{ext}"
         watermarked_file = TEMP_DIR / f"{file_id}_watermarked{ext}"
         final_output_file = TEMP_DIR / f"{file_id}_with_outro{ext}"
-        output_key = f"{uuid.uuid4()}-{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
+        output_key = f"{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
         
         temp_files.extend([input_file, preprocessed_file, watermarked_file, final_output_file])
         
