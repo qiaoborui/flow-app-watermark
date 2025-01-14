@@ -8,7 +8,7 @@ import sys
 import hashlib
 import functools
 import os
-import random
+import uuid
 
 from s3_util import download_file_from_s3, upload_file_to_s3, parse_s3_url, check_processed_video
 from process_util import run_command, get_video_info
@@ -151,48 +151,18 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
 
 @timing_decorator
 def add_watermark(input_file: Path, watermark_path: str, output_file: Path, watermark_height: int) -> None:
-    """Add watermark to video with efficient position changes and reduced video quality"""
-    logger.info("watermark height %d", watermark_height)
-    
-    # Calculate target resolution (720p if original is larger)
-    video_info = get_video_info(str(input_file))
-    video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
-    width = int(video_stream['width'])
-    height = int(video_stream['height'])
-    
-    # If video is larger than 720p, scale it down
-    if height > 720:
-        scale_factor = 720 / height
-        width = int(width * scale_factor)
-        # Ensure width is even
-        width = width if width % 2 == 0 else width + 1
-        height = 720
-        watermark_height = int(watermark_height * scale_factor)
-    
-    # For vertical videos, ensure reasonable width
-    if width < 360:
-        width = 360
-    elif width > 1280:
-        width = 1280
-    # Ensure width is even
-    width = width if width % 2 == 0 else width + 1
-    
+    """Add watermark to video with random position changes every 5 seconds"""
+    logger.info("watermark height %d",watermark_height)
     run_command(
         'ffmpeg',
         [
             '-i', str(input_file),
             '-i', watermark_path,
-            '-filter_complex',
-            f"[0:v]scale={width}:{height}[scaled];"
-            f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];"
-            f"[scaled][wm]overlay=x='mod(t,20)*w':y='h-h/4+sin(t)*h/4'",
+            '-filter_complex',f"[1:v]scale=-1:{watermark_height},format=rgba,colorchannelmixer=aa={WATERMARK_OPACITY}[wm];[0:v][wm]overlay=x='if(lt(mod(t\,16)\,8)\,W-w-W*10/100\,W*10/100)':y='if(lt(mod(t+4\,16)\,8)\,H-h-H*5/100\,H*5/100)'",
             '-c:v', 'libx264',
             '-preset', FFMPEG_PRESET,
-            '-crf', '28',  # 增加 CRF 值来降低视频质量和文件大小
-            '-maxrate', '2M',  # 限制最大码率
-            '-bufsize', '4M',
-            '-c:a', 'aac',  # 重新编码音频以降低码率
-            '-b:a', '128k',  # 设置音频码率
+            '-crf', '23',
+            '-c:a', 'copy',
             str(output_file)
         ]
     )
@@ -335,7 +305,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         input_file = TEMP_DIR / f"{file_id}_input{ext}"
         watermarked_file = TEMP_DIR / f"{file_id}_watermarked{ext}"
         final_output_file = TEMP_DIR / f"{file_id}_with_outro{ext}"
-        output_key = f"{random.randint(100000, 999999)}-{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
+        output_key = f"{uuid.uuid4()}-{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
         
         temp_files.extend([input_file, watermarked_file, final_output_file])
         
