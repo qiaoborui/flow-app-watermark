@@ -61,6 +61,13 @@ FFMPEG_PRESET = os.environ.get("FFMPEG_PRESET", "medium")
 # Whether to disable caching of processed videos
 DISABLE_CACHE = os.environ.get("DISABLE_CACHE", "True").lower() in ['true', '1', 't']
 
+# Target resolution for preprocessing (720p)
+TARGET_HEIGHT = int(os.environ.get("TARGET_HEIGHT", "720"))
+# Target video bitrate (2Mbps)
+TARGET_VIDEO_BITRATE = os.environ.get("TARGET_VIDEO_BITRATE", "2M")
+# Target audio bitrate (128kbps)
+TARGET_AUDIO_BITRATE = os.environ.get("TARGET_AUDIO_BITRATE", "128k")
+
 # Development mode settings
 DEV_MODE = os.environ.get("DEV_MODE", "False").lower() in ['true', '1', 't']  # Set to True to keep temp files in current directory
 # Use system temp directory or current directory based on dev mode
@@ -244,6 +251,25 @@ def generate_watermark(username: str, output_path: str) -> str:
     )
     return output_path
 
+@timing_decorator
+def preprocess_video(input_file: Path, output_file: Path) -> None:
+    """Preprocess video by reducing resolution and bitrate"""
+    logger.info("Preprocessing video to reduce size")
+    run_command(
+        'ffmpeg',
+        [
+            '-i', str(input_file),
+            '-vf', f'scale=-2:{TARGET_HEIGHT}',  # Scale to target height while maintaining aspect ratio
+            '-c:v', 'libx264',
+            '-preset', FFMPEG_PRESET,
+            '-b:v', TARGET_VIDEO_BITRATE,
+            '-c:a', 'aac',
+            '-b:a', TARGET_AUDIO_BITRATE,
+            '-y',
+            str(output_file)
+        ]
+    )
+
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     logger.info(f"Received event: {json.dumps(event)}")
     start_time = time.time()
@@ -303,17 +329,21 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         
         file_id = video_hash
         input_file = TEMP_DIR / f"{file_id}_input{ext}"
+        preprocessed_file = TEMP_DIR / f"{file_id}_preprocessed{ext}"
         watermarked_file = TEMP_DIR / f"{file_id}_watermarked{ext}"
         final_output_file = TEMP_DIR / f"{file_id}_with_outro{ext}"
         output_key = f"{uuid.uuid4()}-{OUTPUT_PREFIX}/{video_hash}_with_outro{ext}"
         
-        temp_files.extend([input_file, watermarked_file, final_output_file])
+        temp_files.extend([input_file, preprocessed_file, watermarked_file, final_output_file])
         
         # Download input video
         _, processing_times['download'] = download_input_video(input_bucket, key, str(input_file))
         
+        # Preprocess video
+        _, processing_times['preprocess'] = preprocess_video(input_file, preprocessed_file)
+        
         # Get video info and calculate watermark size
-        video_info = get_video_info(str(input_file))
+        video_info = get_video_info(str(preprocessed_file))
         video_stream = next(s for s in video_info['streams'] if s['codec_type'] == 'video')
         height = int(video_stream['height'])
         watermark_height = height * WATERMARK_SIZE_PERCENT // 100
@@ -325,7 +355,7 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         temp_files.append(Path(custom_watermark_path))
         
         # Add watermark
-        _, processing_times['watermark'] = add_watermark(input_file, custom_watermark_path, watermarked_file, watermark_height)
+        _, processing_times['watermark'] = add_watermark(preprocessed_file, custom_watermark_path, watermarked_file, watermark_height)
         
         # Create outro
         outro_file, processing_times['outro'] = create_outro(TEMP_DIR, video_info, WATERMARK_PATH)
