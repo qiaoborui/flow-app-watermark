@@ -52,7 +52,7 @@ SUPPORTED_FORMATS = os.environ.get("SUPPORTED_FORMATS", ".mp4,.mov,.avi").split(
 # Duration of the outro in seconds
 OUTRO_DURATION = int(os.environ.get("OUTRO_DURATION", 3))
 # Watermark size percentage (relative to video height)
-WATERMARK_SIZE_PERCENT = int(os.environ.get("WATERMARK_SIZE_PERCENT", 15))
+WATERMARK_SIZE_PERCENT = int(os.environ.get("WATERMARK_SIZE_PERCENT", 10))
 # Watermark opacity (0-1, where 1 is fully opaque and 0 is fully transparent)
 WATERMARK_OPACITY = float(os.environ.get("WATERMARK_OPACITY", 0.7))
 # Position change interval in seconds
@@ -281,13 +281,6 @@ def generate_watermark(username: str, output_path: str) -> str:
     # Calculate text position (centered horizontally, at the bottom with padding)
     x = (required_width - text_width) // 2
     y = base_img.height + (padding_vertical - text_height) // 2
-    
-    # Add black outline
-    outline_color = "black"
-    outline_width = 2
-    for offset_x in range(-outline_width, outline_width + 1):
-        for offset_y in range(-outline_width, outline_width + 1):
-            draw.text((x + offset_x, y + offset_y), text, font=font, fill=outline_color)
     
     # Add white text on top
     draw.text((x, y), text, font=font, fill="white")
