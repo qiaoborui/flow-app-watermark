@@ -59,7 +59,7 @@ POSITION_CHANGE_INTERVAL = int(os.environ.get("POSITION_CHANGE_INTERVAL", 5))
 # FFmpeg encoding preset
 FFMPEG_PRESET = os.environ.get("FFMPEG_PRESET", "medium")
 # Whether to disable caching of processed videos
-DISABLE_CACHE = os.environ.get("DISABLE_CACHE", "True").lower() in ['true', '1', 't']
+DISABLE_CACHE = os.environ.get("DISABLE_CACHE", "False").lower() in ['true', '1', 't']
 
 # Target resolution for preprocessing (720p)
 TARGET_HEIGHT = int(os.environ.get("TARGET_HEIGHT", "720"))
@@ -101,7 +101,7 @@ def create_outro(work_dir: Path, video_info: Dict, watermark_path: str) -> Path:
     outro_path = work_dir / "outro.mp4"
     ffmpeg_args = [
         '-f', 'lavfi',
-        '-i', f'color=c=black:s={width}x{height}:r={framerate}:d={OUTRO_DURATION}',
+        '-i', f'color=c=0x111111:s={width}x{height}:r={framerate}:d={OUTRO_DURATION}',
         '-f', 'lavfi',
         '-i', f'anullsrc=channel_layout=stereo:sample_rate={sample_rate}:d={OUTRO_DURATION}'
     ]
@@ -247,10 +247,10 @@ def generate_watermark(username: str, output_path: str) -> str:
     
     # Try to use custom font, fallback to default if not available
     try:
-        font = ImageFont.truetype(FONT_PATH, 24)
+        font = ImageFont.truetype(FONT_PATH, 27)
     except:
         try:
-            font = ImageFont.truetype("Arial", 24)
+            font = ImageFont.truetype("Arial", 27)
         except:
             font = ImageFont.load_default()
     
@@ -281,6 +281,13 @@ def generate_watermark(username: str, output_path: str) -> str:
     x = (required_width - text_width) // 2
     y = base_img.height + (padding_vertical - text_height) // 2
     
+    # Add white outline
+    outline_color = "white"
+    outline_width = 1
+    for offset_x in range(-outline_width, outline_width + 1):
+        for offset_y in range(-outline_width, outline_width + 1):
+            draw.text((x + offset_x, y + offset_y), text, font=font, fill=outline_color)
+
     # Add white text on top
     draw.text((x, y), text, font=font, fill="white")
     
